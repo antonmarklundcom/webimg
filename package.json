@@ -1,0 +1,16 @@
+{
+  "name": "webimg",
+  "version": "0.1.0",
+  "description": "Convert PNG/JPG into SEO-named AVIF + WebP sets for static sites, with LLM-generated filenames and alt text.",
+  "type": "module",
+  "bin": { "webimg": "./webimg.mjs" },
+  "repository": "github:antonmarklundcom/webimg",
+  "license": "MIT",
+  "scripts": { "test": "node --test" },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest",
+    "commander": "^13",
+    "sharp": "^0.34"
+  }
+}
