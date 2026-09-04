@@ -30,7 +30,11 @@ webimg --help
 node webimg.mjs --help
 ```
 
-## Env var
+## Naming: no API key needed
+
+The intended way to use webimg is from inside a Claude Code session: the session decides the SEO slug and the alt text and passes them with `--name` and `--alt`. That path is free and sends nothing to any API. The `ANTHROPIC_API_KEY` path below is optional, for running webimg outside a Claude session.
+
+## Env var (optional)
 
 webimg reads `ANTHROPIC_API_KEY` to call Claude for filename/alt-text
 generation. If it's unset, naming falls back to a mechanical slug of the
