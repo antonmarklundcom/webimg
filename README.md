@@ -109,6 +109,8 @@ Supported input types (local path or URL): `.png`, `.jpg`, `.jpeg`,
 
 ### Batch mode
 
+(For a drag-and-drop alternative see **Local web UI** below.)
+
 ```bash
 webimg batch ./input --manifest ./input/batch.csv --ar 21:9 --out ./assets/img
 ```
@@ -142,6 +144,77 @@ or a `{ file: prompt }` map (string value, or an object with `prompt`/`name`/`al
 
 Missing files are skipped (not fatal); the run ends with a summary line and
 exits 1 only if any row actually failed to process.
+
+
+## Where the images end up
+
+Every command writes into the `--out` folder (default `./assets/img`,
+relative to where you ran the command):
+
+- `<slug>-<width>.avif` and `<slug>-<width>.webp` for each width
+  (default 640, 1280, 1920), so six files per source image
+- `manifest.json`, listing every set with its alt text and a ready-to-paste
+  `<picture>` snippet
+
+Nothing is uploaded anywhere. If you run webimg inside a website repo with
+`--out assets/img`, the files are already in place: commit them and the
+snippet from `manifest.json` is correct as-is.
+
+## Local web UI: drop images, download one by one or as a zip
+
+```bash
+webimg serve --open                 # UI at http://127.0.0.1:8787/, output in ./assets/img
+webimg serve --out C:\sites\luque\assets\img --open   # write straight into a project
+npx --yes github:antonmarklundcom/webimg serve --open   # no install
+```
+
+In the browser:
+
+1. Drop (or paste, or pick) PNG / JPG / WebP files.
+2. Give each one a short description; optionally type the slug and alt text
+   yourself, and an aspect ratio per image or for the whole drop.
+3. Click **Convert all**. Each image becomes an AVIF + WebP set with the
+   final SEO filenames.
+4. Download any single file, one image set as a zip, the whole upload as a
+   zip (`webimg-<batch>.zip`, includes a `manifest.json` for just those
+   images), or everything in the output folder.
+
+The server binds to localhost only. Uploaded bytes go to a temp file, are
+converted locally, and the temp file is deleted. Batches are remembered
+while the server runs; the "everything" zip and the output folder survive
+restarts.
+
+### Windows shortcut
+
+After `npm install` and `npm link` in the webimg folder, create a shortcut
+(or a `webimg.cmd` on the desktop) with:
+
+```bat
+webimg serve --out "C:\path\to\site\assets\img" --open
+```
+
+Double-click it, drop images, download or let them land in the project
+directly.
+
+## Zipping output for Claude, GitHub, or another project
+
+```bash
+webimg zip assets/img                           # -> img.zip with everything + manifest.json
+webimg zip assets/img --out luque-images.zip
+webimg zip assets/img --name fachada-luque,oficina-luque --out two-sets.zip
+```
+
+Typical hand-offs:
+
+- **Into a Claude Code session**: attach the zip (or the converted files) to
+  the chat; the session can unzip with `unzip file.zip -d assets/img` and
+  paste the `html_snippet` values from `manifest.json` into the pages.
+- **From a Claude Code cloud session**: the session runs
+  `npx --yes github:antonmarklundcom/webimg convert <url or file> ...`
+  directly in the site repo, commits `assets/img`, and pushes. No zip
+  needed.
+- **Into GitHub**: run webimg with `--out` pointing into the site repo's
+  image folder and commit, or unzip a downloaded batch there.
 
 ## Output
 
@@ -191,6 +264,11 @@ end of the run so you can copy it straight out.
 | `--position <pos>` | convert, batch | `attention` | `attention`\|`top`\|`centre`\|`entropy`; rows can override in batch |
 | `--dry-run` | convert, batch | off | prints planned names/dimensions, writes nothing |
 | `--manifest <file>` | batch | — | required; `.csv` or `.json` |
+| `--port <n>` | serve | `8787` | `0` picks a free port |
+| `--host <host>` | serve | `127.0.0.1` | keep it local |
+| `--open` | serve | off | opens the UI in the default browser |
+| `--name <bases>` | zip | everything | comma-separated `filename_base` values to include |
+| `--out <file>` | zip | `<dir name>.zip` | zip file to write |
 
 ## Privacy note
 

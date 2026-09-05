@@ -7,230 +7,101 @@ import fssync from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { generateNaming, validateSlug } from "./src/naming.js";
 import { processImage } from "./src/process.js";
 import { writeManifest } from "./src/manifest.js";
 import { loadBatchManifest } from "./src/batch.js";
 import { fetchToTemp } from "./src/fetch.js";
+import {
+  VALID_EXTENSIONS,
+  isUrl,
+  parseWidths,
+  parseAr,
+  formatAr,
+  normalizeOutPrefix,
+  buildHtmlSnippet,
+  buildFilesForManifest,
+  resolveNaming,
+  convertImage,
+} from "./src/convert.js";
+import { startServer, openInBrowser } from "./src/server.js";
+import { zipDirectory } from "./src/zip.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(fssync.readFileSync(path.join(__dirname, "package.json"), "utf8"));
 
-const VALID_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
-const URL_RE = /^https?:\/\//i;
-
-function isUrl(str) {
-  return URL_RE.test(String(str || ""));
-}
-
-function parseWidths(str) {
-  const parts = String(str)
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (parts.length === 0) {
-    throw new Error(`invalid --widths value: ${str}`);
-  }
-  const nums = parts.map((p) => {
-    const n = Number(p);
-    if (!Number.isInteger(n) || n <= 0) {
-      throw new Error(`invalid width value: "${p}" (must be a positive integer)`);
-    }
-    return n;
-  });
-  return [...new Set(nums)].sort((a, b) => a - b);
-}
-
-function parseAr(str) {
-  if (str === undefined || str === null || str === "") return null;
-  const s = String(str).trim();
-  let w, h;
-  if (s.includes(":")) {
-    const parts = s.split(":");
-    if (parts.length !== 2) throw new Error(`invalid --ar value: ${str}`);
-    w = Number(parts[0]);
-    h = Number(parts[1]);
-  } else if (s.includes("/")) {
-    const parts = s.split("/");
-    if (parts.length !== 2) throw new Error(`invalid --ar value: ${str}`);
-    w = Number(parts[0]);
-    h = Number(parts[1]);
-  } else {
-    w = Number(s);
-    h = 1;
-  }
-  if (!isFinite(w) || !isFinite(h) || w <= 0 || h <= 0) {
-    throw new Error(`invalid --ar value: ${str}`);
-  }
-  return [w, h];
-}
-
-function formatAr(ar) {
-  if (!ar) return "source";
-  return `${ar[0]}:${ar[1]}`;
-}
-
-function normalizeOutPrefix(outDir) {
-  let p = outDir.replace(/\\/g, "/");
-  p = p.replace(/^\.\//, "");
-  p = p.replace(/\/+$/, "");
-  return p;
-}
-
-function pickMidWidth(widths) {
-  const sorted = [...widths].sort((a, b) => a - b);
-  if (sorted.length === 1) return sorted[0];
-  const idx = Math.floor((sorted.length - 1) / 2);
-  return sorted[idx];
-}
-
-function escapeAttr(str) {
-  return String(str).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-}
-
-function buildHtmlSnippet({ outPrefix, filenameBase, widths, altText, entries }) {
-  const sortedWidths = [...widths].sort((a, b) => a - b);
-  const avifSrcset = sortedWidths
-    .map((w) => `${outPrefix}/${filenameBase}-${w}.avif ${w}w`)
-    .join(", ");
-  const webpSrcset = sortedWidths
-    .map((w) => `${outPrefix}/${filenameBase}-${w}.webp ${w}w`)
-    .join(", ");
-
-  const midWidth = pickMidWidth(sortedWidths);
-  const midEntry = entries.find((e) => e.format === "webp" && e.width === midWidth) ||
-    entries.find((e) => e.format === "webp");
-  const imgSrc = `${outPrefix}/${filenameBase}-${midWidth}.webp`;
-  const imgWidth = midEntry ? midEntry.width : midWidth;
-  const imgHeight = midEntry ? midEntry.height : Math.round(midWidth);
-
-  return [
-    "<picture>",
-    `  <source type="image/avif" srcset="${avifSrcset}">`,
-    `  <source type="image/webp" srcset="${webpSrcset}">`,
-    `  <img src="${imgSrc}" alt="${escapeAttr(altText)}" width="${imgWidth}" height="${imgHeight}" loading="lazy" decoding="async">`,
-    "</picture>",
-  ].join("\n");
-}
-
-function buildFilesForManifest(entries) {
-  return entries.map((e) => ({
-    file: e.file,
-    format: e.format,
-    width: e.width,
-    height: e.height,
-    kb: Math.round((e.bytes / 1024) * 10) / 10,
-  }));
-}
-
-/**
- * Resolves filename_base + alt_text, honoring --name/--alt overrides.
- * Never throws for API failures (generateNaming already falls back);
- * throws only if an explicit --name slug fails validation.
- */
-async function resolveNaming({ nameOpt, altOpt, prompt, apiKey, model, inputBasename }) {
-  if (nameOpt) {
-    if (!validateSlug(nameOpt)) {
-      throw new Error(`invalid --name slug: "${nameOpt}"`);
-    }
-    if (altOpt) {
-      return { filename_base: nameOpt, alt_text: altOpt, source: "fallback" };
-    }
-    if (apiKey) {
-      const result = await generateNaming({ prompt, model, apiKey });
-      return { filename_base: nameOpt, alt_text: result.alt_text, source: result.source };
-    }
-    return { filename_base: nameOpt, alt_text: (prompt || "").trim(), source: "fallback" };
-  }
-
-  const result = await generateNaming({ prompt, model, apiKey, inputBasename });
-  const altText = altOpt || result.alt_text;
-  return { filename_base: result.filename_base, alt_text: altText, source: result.source };
-}
-
 async function runConvert(input, opts) {
-  const inputIsUrl = isUrl(input);
-  let resolvedInput = input;
-  let cleanup = null;
+  const { entry, entries, naming } = await convertImage({
+    input,
+    prompt: opts.prompt,
+    name: opts.name,
+    alt: opts.alt,
+    ar: opts.ar,
+    widths: opts.widths,
+    qualityAvif: opts.qualityAvif,
+    qualityWebp: opts.qualityWebp,
+    outDir: opts.out,
+    model: opts.model,
+    position: opts.position,
+    dryRun: opts.dryRun,
+  });
 
-  try {
-    if (inputIsUrl) {
-      const downloaded = await fetchToTemp(input);
-      resolvedInput = downloaded.path;
-      cleanup = downloaded.cleanup;
+  if (opts.dryRun) {
+    console.log(`ℹ dry run — would generate ${entries.length} files for "${naming.filename_base}":`);
+    for (const e of entries) {
+      console.log(`  ${e.file}  ${e.width}×${e.height}`);
     }
-
-    const ext = path.extname(resolvedInput).toLowerCase();
-    if (!VALID_EXTENSIONS.has(ext)) {
-      throw new Error(`unsupported input type "${ext}" — expected .png, .jpg, .jpeg, or .webp`);
-    }
-
-    const widths = parseWidths(opts.widths);
-    const ar = opts.ar ? parseAr(opts.ar) : null;
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-
-    const inputBasename = inputIsUrl
-      ? undefined
-      : path.basename(resolvedInput, path.extname(resolvedInput));
-
-    const naming = await resolveNaming({
-      nameOpt: opts.name,
-      altOpt: opts.alt,
-      prompt: opts.prompt,
-      apiKey,
-      model: opts.model,
-      inputBasename,
-    });
-
-    const outDir = opts.out;
-    const entries = await processImage({
-      input: resolvedInput,
-      filenameBase: naming.filename_base,
-      widths,
-      ar,
-      qualityAvif: opts.qualityAvif,
-      qualityWebp: opts.qualityWebp,
-      outDir,
-      position: opts.position,
-      dryRun: opts.dryRun,
-    });
-
-    if (opts.dryRun) {
-      console.log(`ℹ dry run — would generate ${entries.length} files for "${naming.filename_base}":`);
-      for (const e of entries) {
-        console.log(`  ${e.file}  ${e.width}×${e.height}`);
-      }
-      console.log(`ℹ alt text: ${naming.alt_text}`);
-      return;
-    }
-
-    const outPrefix = normalizeOutPrefix(outDir);
-    const htmlSnippet = buildHtmlSnippet({
-      outPrefix,
-      filenameBase: naming.filename_base,
-      widths,
-      altText: naming.alt_text,
-      entries,
-    });
-
-    const manifestEntry = {
-      filename_base: naming.filename_base,
-      source: inputIsUrl ? input : path.relative(process.cwd(), input).replace(/\\/g, "/"),
-      prompt: opts.prompt || "",
-      alt_text: naming.alt_text,
-      naming_source: naming.source,
-      aspect_ratio: formatAr(ar),
-      files: buildFilesForManifest(entries),
-      html_snippet: htmlSnippet,
-    };
-
-    await writeManifest(outDir, [manifestEntry]);
-
-    console.log(`\nAlt text: ${naming.alt_text}\n`);
-    console.log(htmlSnippet);
-  } finally {
-    if (cleanup) await cleanup();
+    console.log(`ℹ alt text: ${naming.alt_text}`);
+    return;
   }
+
+  console.log(`\nAlt text: ${naming.alt_text}\n`);
+  console.log(entry.html_snippet);
+}
+
+async function runServe(opts) {
+  const { url, outDir } = await startServer({
+    outDir: opts.out,
+    port: Number(opts.port),
+    host: opts.host,
+    widths: opts.widths,
+    qualityAvif: opts.qualityAvif,
+    qualityWebp: opts.qualityWebp,
+    model: opts.model,
+    position: opts.position,
+  });
+  console.log(`webimg is running at ${url}`);
+  console.log(`Converted files are written to ${outDir}`);
+  console.log(`Drop images in the browser, then download them one by one or as a zip. Ctrl+C to stop.`);
+  if (opts.open) openInBrowser(url);
+  await new Promise(() => {});
+}
+
+async function runZip(dir, opts) {
+  const only = opts.name
+    ? await (async () => {
+        const bases = String(opts.name).split(",").map((s) => s.trim()).filter(Boolean);
+        let manifest = { images: [] };
+        try {
+          manifest = JSON.parse(await fs.readFile(path.join(dir, "manifest.json"), "utf8"));
+        } catch {
+          throw new Error(`--name needs ${path.join(dir, "manifest.json")} to look up the image sets`);
+        }
+        const set = new Set();
+        for (const base of bases) {
+          const entry = (manifest.images || []).find((e) => e.filename_base === base);
+          if (!entry) throw new Error(`no image set named "${base}" in ${dir}`);
+          for (const f of entry.files || []) set.add(f.file);
+        }
+        return set;
+      })()
+    : null;
+
+  const { buffer, count, names } = await zipDirectory(dir, { only });
+  if (count === 0) throw new Error(`nothing to zip in ${dir}`);
+  const outFile = opts.out || `${path.basename(path.resolve(dir))}.zip`;
+  await fs.writeFile(outFile, buffer);
+  for (const n of names) console.log(`  + ${n}`);
+  console.log(`✓ ${outFile}  ${count} files  ${(buffer.length / 1024).toFixed(1)} KB`);
 }
 
 async function runBatch(dir, opts) {
@@ -400,6 +271,32 @@ async function main() {
     .option("--dry-run", "print planned output without writing files", false)
     .action(async (dir, opts) => {
       await runBatch(dir, opts);
+    });
+
+  program
+    .command("serve")
+    .description("Start a local drag-and-drop web UI: upload images, convert, download one by one or as a zip")
+    .option("--out <dir>", "output directory", "./assets/img")
+    .option("--port <n>", "port to listen on (0 = random)", "8787")
+    .option("--host <host>", "address to bind (keep it local)", "127.0.0.1")
+    .option("--open", "open the UI in your browser", false)
+    .option("--widths <list>", "default comma-separated output widths", "640,1280,1920")
+    .option("--quality-avif <n>", "AVIF quality (0-100)", (v) => Number(v), 44)
+    .option("--quality-webp <n>", "WebP quality (0-100)", (v) => Number(v), 60)
+    .option("--model <model>", "Claude model for naming/alt text", "claude-sonnet-5")
+    .option("--position <pos>", "default crop position: attention|top|centre|entropy", "attention")
+    .action(async (opts) => {
+      await runServe(opts);
+    });
+
+  program
+    .command("zip")
+    .description("Zip an output directory (or selected image sets) for hand-off to a project, Claude, or GitHub")
+    .argument("[dir]", "directory with converted images", "./assets/img")
+    .option("--out <file>", "zip file to write (default: <dir name>.zip)")
+    .option("--name <bases>", "comma-separated filename_base values to include (default: everything)")
+    .action(async (dir, opts) => {
+      await runZip(dir, opts);
     });
 
   await program.parseAsync(process.argv);
