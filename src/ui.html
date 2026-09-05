@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>webimg</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --line:#dfe3e8; --text:#1c2128; --muted:#5b6470; --accent:#1f6feb; --ok:#1a7f37; --err:#c0392b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  main { max-width:1100px; margin:0 auto; padding:24px 20px 60px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 18px; }
+  .sub code { background:#eceff3; padding:1px 5px; border-radius:4px; }
+  #drop { border:2px dashed #b7bfc9; border-radius:12px; background:var(--card); padding:36px 20px; text-align:center; color:var(--muted); cursor:pointer; transition:.15s; }
+  #drop.over { border-color:var(--accent); background:#eef4ff; color:var(--accent); }
+  #drop strong { color:var(--text); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-top:16px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:end; }
+  label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); }
+  input, select { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--text); min-width:120px; }
+  input.wide { min-width:260px; flex:1; }
+  button { font:inherit; padding:8px 14px; border-radius:6px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button:disabled { opacity:.5; cursor:default; }
+  a.btn { display:inline-block; padding:5px 10px; border:1px solid var(--line); border-radius:6px; text-decoration:none; color:var(--text); background:#fff; font-size:13px; }
+  a.btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  table { width:100%; border-collapse:collapse; margin-top:12px; }
+  th, td { text-align:left; padding:8px 6px; border-top:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; color:var(--muted); border-top:0; }
+  td input { width:100%; min-width:0; }
+  .thumb { width:64px; height:44px; object-fit:cover; border-radius:4px; background:#eee; }
+  .status { font-size:12px; }
+  .ok { color:var(--ok); } .err { color:var(--err); } .busy { color:var(--accent); }
+  .files { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .files a { font-size:12px; padding:3px 8px; }
+  pre { background:#f0f2f5; padding:10px; border-radius:6px; overflow-x:auto; font-size:12px; margin:8px 0 0; }
+  .batch-head { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  .batch-head h2 { font-size:15px; margin:0; }
+  .alt { color:var(--muted); font-size:12px; margin-top:4px; }
+  .muted { color:var(--muted); }
+  details summary { cursor:pointer; font-size:12px; color:var(--muted); margin-top:6px; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:12px; }
+  .hint { font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>webimg</h1>
+  <p class="sub">Drop PNG / JPG / WebP images, describe each one, convert. Output lands in <code id="outdir">…</code> and every file can be downloaded here one by one or as a zip. <span id="llm"></span></p>
+
+  <div id="drop"><strong>Drop images here</strong> or click to choose<br><span class="hint">Naming: give each image a short description (used for the slug + alt text) or type the slug yourself.</span></div>
+  <input type="file" id="picker" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" multiple hidden>
+
+  <div class="card" id="queue-card" hidden>
+    <div class="row">
+      <label>Aspect ratio (all rows)<input id="d-ar" placeholder="source (e.g. 21:9, 4:3)"></label>
+      <label>Widths<input id="d-widths"></label>
+      <label>Crop position<select id="d-pos"><option>attention</option><option>entropy</option><option>centre</option><option>top</option><option>bottom</option></select></label>
+      <label>Batch name<input id="d-batch" placeholder="auto"></label>
+    </div>
+    <table id="queue">
+      <thead><tr><th></th><th>Source</th><th style="width:26%">Description (prompt)</th><th style="width:18%">Slug (optional)</th><th style="width:22%">Alt text (optional)</th><th>AR</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="actions">
+      <button class="primary" id="convert">Convert all</button>
+      <button id="clear">Clear queue</button>
+      <span class="hint">Slug and alt text are filled from the description when left empty.</span>
+    </div>
+  </div>
+
+  <div id="results"></div>
+
+  <div class="card">
+    <div class="batch-head">
+      <h2>Everything in the output folder</h2>
+      <a class="btn" href="/api/all.zip">Download all as zip</a>
+    </div>
+    <div class="hint" id="all-count"></div>
+  </div>
+</main>
+<script>
+(() => {
+  const $ = (s, el=document) => el.querySelector(s);
+  const queue = [];
+  let config = { defaults: {} };
+  const batches = new Map();
+
+  fetch('/api/config').then(r => r.json()).then(c => {
+    config = c;
+    $('#outdir').textContent = c.outDirRelative === '.' ? c.outDir : c.outDirRelative + '/';
+    $('#d-widths').value = c.defaults.widths;
+    $('#d-pos').value = c.defaults.position;
+    $('#llm').textContent = c.namingWithLlm ? 'Claude naming is on (ANTHROPIC_API_KEY set).' : 'No API key: slugs are made from the description; set the slug yourself for full control.';
+    refreshAll();
+  });
+
+  function refreshAll() {
+    fetch('/api/manifest').then(r => r.json()).then(m => {
+      const n = m.images.length;
+      const files = m.images.reduce((a, e) => a + (e.files||[]).length, 0);
+      $('#all-count').textContent = n ? `${n} image set${n===1?'':'s'}, ${files} files, plus manifest.json` : 'Nothing converted yet.';
+    });
+  }
+
+  const drop = $('#drop'), picker = $('#picker');
+  drop.addEventListener('click', () => picker.click());
+  picker.addEventListener('change', () => { addFiles(picker.files); picker.value = ''; });
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+  document.addEventListener('paste', e => { const fs = [...(e.clipboardData?.files || [])]; if (fs.length) addFiles(fs); });
+
+  function slugify(t) {
+    return String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+  }
+
+  function addFiles(list) {
+    for (const f of list) {
+      if (!/\.(png|jpe?g|webp)$/i.test(f.name)) continue;
+      const item = { file: f, prompt: '', name: '', alt: '', ar: '', status: '', url: URL.createObjectURL(f) };
+      queue.push(item);
+    }
+    render();
+  }
+
+  function render() {
+    $('#queue-card').hidden = queue.length === 0;
+    const tb = $('#queue tbody'); tb.innerHTML = '';
+    queue.forEach((it, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><img class="thumb" src="${it.url}" alt=""></td>
+        <td><div>${esc(it.file.name)}</div><div class="status ${it.cls||''}">${esc(it.status)}</div></td>
+        <td><input data-k="prompt" placeholder="e.g. fachada de oficina en Luque" value="${esc(it.prompt)}"></td>
+        <td><input data-k="name" placeholder="${esc(slugify(it.prompt) || slugify(it.file.name.replace(/\.[^.]+$/,'')))}" value="${esc(it.name)}"></td>
+        <td><input data-k="alt" placeholder="(from description)" value="${esc(it.alt)}"></td>
+        <td><input data-k="ar" placeholder="default" value="${esc(it.ar)}" style="min-width:70px"></td>
+        <td><button data-rm="${i}" title="Remove">✕</button></td>`;
+      tr.querySelectorAll('input').forEach(inp => inp.addEventListener('input', () => { it[inp.dataset.k] = inp.value; if (inp.dataset.k === 'prompt') tr.querySelector('[data-k=name]').placeholder = slugify(inp.value) || ''; }));
+      tr.querySelector('[data-rm]').addEventListener('click', () => { queue.splice(i,1); render(); });
+      tb.appendChild(tr);
+    });
+  }
+
+  function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+
+  $('#clear').addEventListener('click', () => { queue.length = 0; render(); });
+
+  $('#convert').addEventListener('click', async () => {
+    const btn = $('#convert'); btn.disabled = true;
+    const batchId = ($('#d-batch').value.trim() || new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')).replace(/[^a-zA-Z0-9_-]+/g,'-');
+    const dAr = $('#d-ar').value.trim(), dW = $('#d-widths').value.trim(), dPos = $('#d-pos').value;
+    for (const it of [...queue]) {
+      if (it.done) continue;
+      if (!it.prompt.trim() && !it.name.trim()) { it.status = 'needs a description or a slug'; it.cls = 'err'; render(); continue; }
+      it.status = 'converting…'; it.cls = 'busy'; render();
+      const q = new URLSearchParams({ filename: it.file.name, prompt: it.prompt, name: it.name, alt: it.alt, ar: it.ar || dAr, widths: dW, position: dPos, batch: batchId });
+      try {
+        const r = await fetch('/api/convert?' + q, { method: 'POST', body: it.file, headers: { 'content-type': 'application/octet-stream' } });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || r.statusText);
+        it.done = true; it.status = '✓ ' + j.entry.filename_base; it.cls = 'ok';
+        addResult(j.batch, j.entry);
+      } catch (e) { it.status = '✗ ' + e.message; it.cls = 'err'; }
+      render();
+    }
+    // drop finished rows from the queue
+    for (let i = queue.length - 1; i >= 0; i--) if (queue[i].done) queue.splice(i, 1);
+    render(); refreshAll(); btn.disabled = false;
+  });
+
+  function addResult(batchId, entry) {
+    let b = batches.get(batchId);
+    if (!b) {
+      const card = document.createElement('div'); card.className = 'card';
+      card.innerHTML = `<div class="batch-head"><h2>Upload ${esc(batchId)} <span class="muted" data-n></span></h2>
+        <a class="btn primary" href="/api/batch/${encodeURIComponent(batchId)}.zip">Download this upload as zip</a></div><div data-list></div>`;
+      $('#results').prepend(card);
+      b = { card, n: 0 }; batches.set(batchId, b);
+    }
+    b.n++; b.card.querySelector('[data-n]').textContent = `(${b.n} image${b.n===1?'':'s'})`;
+    const div = document.createElement('div'); div.style.marginTop = '12px';
+    const files = entry.files.map(f => `<a class="btn" href="/files/${encodeURIComponent(f.file)}?download" download="${esc(f.file)}">${esc(f.file)} <span class="muted">${f.kb} KB</span></a>`).join('');
+    div.innerHTML = `<div style="display:flex;gap:10px;align-items:flex-start">
+        <img class="thumb" src="/files/${encodeURIComponent(entry.files.find(f=>f.format==='webp')?.file || entry.files[0].file)}" alt="">
+        <div style="flex:1"><strong>${esc(entry.filename_base)}</strong> <span class="muted">· ${esc(entry.aspect_ratio)} · from ${esc(entry.source)}</span>
+          <div class="alt">alt: ${esc(entry.alt_text)}</div>
+          <div class="files">${files}<a class="btn" href="/api/set/${encodeURIComponent(entry.filename_base)}.zip">all ${entry.files.length} as zip</a></div>
+          <details><summary>HTML snippet</summary><pre>${esc(entry.html_snippet)}</pre><button data-copy>Copy snippet</button></details>
+        </div></div>`;
+    div.querySelector('[data-copy]').addEventListener('click', () => navigator.clipboard.writeText(entry.html_snippet));
+    b.card.querySelector('[data-list]').appendChild(div);
+  }
+})();
+</script>
+</body>
+</html>
