@@ -53,10 +53,13 @@ export async function processImage({
   const pos = resolvePosition(position);
 
   for (const width of widths) {
-    const height = Math.round((width * arH) / arW);
+    // Never upscale: a variant wider than the source is written at the source width.
+    // The file keeps its requested label (-1280) so templates can rely on stable names.
+    const outWidth = Math.min(width, srcWidth);
+    const height = Math.round((outWidth * arH) / arW);
 
     if (width > srcWidth) {
-      console.log(`⚠ upscaling ${width} from source ${srcWidth}px`);
+      console.log(`ℹ ${width} variant capped at source width ${srcWidth}px (no upscaling)`);
     }
 
     if (dryRun) {
@@ -64,7 +67,7 @@ export async function processImage({
         file: `${filenameBase}-${width}.avif`,
         path: path.join(outDir, `${filenameBase}-${width}.avif`),
         format: "avif",
-        width,
+        width: outWidth,
         height,
         bytes: 0,
       });
@@ -72,7 +75,7 @@ export async function processImage({
         file: `${filenameBase}-${width}.webp`,
         path: path.join(outDir, `${filenameBase}-${width}.webp`),
         format: "webp",
-        width,
+        width: outWidth,
         height,
         bytes: 0,
       });
@@ -81,7 +84,7 @@ export async function processImage({
 
     const base = sharp(input)
       .rotate()
-      .resize({ width, height, fit: "cover", position: pos, withoutEnlargement: false });
+      .resize({ width: outWidth, height, fit: "cover", position: pos, withoutEnlargement: false });
 
     const avifPath = path.join(outDir, `${filenameBase}-${width}.avif`);
     const webpPath = path.join(outDir, `${filenameBase}-${width}.webp`);

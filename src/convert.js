@@ -61,8 +61,15 @@ export function formatAr(ar) {
   return `${ar[0]}:${ar[1]}`;
 }
 
-export function normalizeOutPrefix(outDir) {
-  let p = outDir.replace(/\\/g, "/");
+export function normalizeOutPrefix(outDir, publicPath) {
+  if (publicPath) return publicPath.replace(/\\/g, "/").replace(/\/+$/, "");
+  let p = outDir;
+  if (path.isAbsolute(p) && !p.startsWith("/")) {
+    // Windows absolute path: use it relative to cwd when possible so the snippet works on a site.
+    const rel = path.relative(process.cwd(), p);
+    if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) p = rel;
+  }
+  p = p.replace(/\\/g, "/");
   p = p.replace(/^\.\//, "");
   p = p.replace(/\/+$/, "");
   return p;
@@ -81,11 +88,13 @@ function escapeAttr(str) {
 
 export function buildHtmlSnippet({ outPrefix, filenameBase, widths, altText, entries }) {
   const sortedWidths = [...widths].sort((a, b) => a - b);
+  // Describe each file by its real pixel width (a capped variant is narrower than its label).
+  const realW = (w, fmt) => (entries.find((e) => e.file === `${filenameBase}-${w}.${fmt}`) || {}).width || w;
   const avifSrcset = sortedWidths
-    .map((w) => `${outPrefix}/${filenameBase}-${w}.avif ${w}w`)
+    .map((w) => `${outPrefix}/${filenameBase}-${w}.avif ${realW(w, "avif")}w`)
     .join(", ");
   const webpSrcset = sortedWidths
-    .map((w) => `${outPrefix}/${filenameBase}-${w}.webp ${w}w`)
+    .map((w) => `${outPrefix}/${filenameBase}-${w}.webp ${realW(w, "webp")}w`)
     .join(", ");
 
   const midWidth = pickMidWidth(sortedWidths);
@@ -156,6 +165,7 @@ export async function convertImage({
   qualityAvif = 44,
   qualityWebp = 60,
   outDir = "./assets/img",
+  publicPath,
   model = "claude-sonnet-5",
   position = "attention",
   dryRun = false,
@@ -207,7 +217,7 @@ export async function convertImage({
       dryRun,
     });
 
-    const outPrefix = normalizeOutPrefix(outDir);
+    const outPrefix = normalizeOutPrefix(outDir, publicPath);
     const htmlSnippet = buildHtmlSnippet({
       outPrefix,
       filenameBase: naming.filename_base,

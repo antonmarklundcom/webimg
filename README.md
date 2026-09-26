@@ -252,12 +252,13 @@ end of the run so you can copy it straight out.
 
 | Option | Applies to | Default | Notes |
 |---|---|---|---|
-| `--prompt <text>` | convert | — | required; used for LLM naming/alt and as the fallback slug source |
+| `--prompt <text>` | convert | — | required unless both `--name` and `--alt` are given; used for LLM naming/alt and as the fallback slug source |
 | `--ar <ratio>` | convert, batch | source aspect ratio | `21:9`, `21/9`, or a decimal like `2.333`; rows can override in batch |
-| `--widths <list>` | convert, batch | `640,1280,1920` | comma-separated positive integers |
+| `--widths <list>` | convert, batch | `640,1280,1920` | comma-separated positive integers; never upscales: a width above the source is written at the source width but keeps its `-<width>` file name, and the srcset uses the real width |
 | `--quality-avif <n>` | convert, batch | `44` | |
 | `--quality-webp <n>` | convert, batch | `60` | |
 | `--out <dir>` | convert, batch | `./assets/img` | |
+| `--public-path <path>` | convert, batch | `--out` relative to cwd | web path written in the `<picture>` snippet, e.g. `/assets/img`; use it when `--out` is an absolute disk path |
 | `--model <model>` | convert, batch | `claude-sonnet-5` | |
 | `--name <slug>` | convert | — | skips the LLM for naming; still validated |
 | `--alt <text>` | convert | — | overrides alt text |

@@ -30,6 +30,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(fssync.readFileSync(path.join(__dirname, "package.json"), "utf8"));
 
 async function runConvert(input, opts) {
+  if (!opts.prompt && !(opts.name && opts.alt)) {
+    throw new Error("give --prompt, or both --name and --alt");
+  }
   const { entry, entries, naming } = await convertImage({
     input,
     prompt: opts.prompt,
@@ -40,6 +43,7 @@ async function runConvert(input, opts) {
     qualityAvif: opts.qualityAvif,
     qualityWebp: opts.qualityWebp,
     outDir: opts.out,
+    publicPath: opts.publicPath,
     model: opts.model,
     position: opts.position,
     dryRun: opts.dryRun,
@@ -115,7 +119,7 @@ async function runBatch(dir, opts) {
   const arDefault = opts.ar ? parseAr(opts.ar) : null;
   const apiKey = process.env.ANTHROPIC_API_KEY;
   const outDir = opts.out;
-  const outPrefix = normalizeOutPrefix(outDir);
+  const outPrefix = normalizeOutPrefix(outDir, opts.publicPath);
 
   let converted = 0;
   let skipped = 0;
@@ -241,7 +245,8 @@ async function main() {
     .command("convert")
     .description("Convert a single image into an SEO-named AVIF + WebP set")
     .argument("<input>", "path to a .png, .jpg, .jpeg, or .webp source image, or an http(s) URL to one")
-    .requiredOption("--prompt <text>", "short description used for LLM naming/alt text")
+    .option("--prompt <text>", "short description used for LLM naming/alt text (optional when --name and --alt are given)")
+    .option("--public-path <path>", "web path used in the HTML snippet, e.g. /assets/img (default: --out relative to cwd)")
     .option("--ar <ratio>", "target aspect ratio, e.g. 21:9 (default: source aspect ratio)")
     .option("--widths <list>", "comma-separated output widths", "640,1280,1920")
     .option("--quality-avif <n>", "AVIF quality (0-100)", (v) => Number(v), 44)
@@ -266,6 +271,7 @@ async function main() {
     .option("--quality-avif <n>", "AVIF quality (0-100)", (v) => Number(v), 44)
     .option("--quality-webp <n>", "WebP quality (0-100)", (v) => Number(v), 60)
     .option("--out <dir>", "output directory", "./assets/img")
+    .option("--public-path <path>", "web path used in the HTML snippets, e.g. /assets/img (default: --out relative to cwd)")
     .option("--model <model>", "Claude model for naming/alt text", "claude-sonnet-5")
     .option("--position <pos>", "default crop position: attention|top|centre|entropy (rows may override)", "attention")
     .option("--dry-run", "print planned output without writing files", false)
