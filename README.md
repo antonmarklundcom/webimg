@@ -259,6 +259,8 @@ end of the run so you can copy it straight out.
 | `--quality-webp <n>` | convert, batch | `60` | |
 | `--out <dir>` | convert, batch | `./assets/img` | |
 | `--public-path <path>` | convert, batch | `--out` relative to cwd | web path written in the `<picture>` snippet, e.g. `/assets/img`; use it when `--out` is an absolute disk path |
+| `--sizes <value>` | convert, batch | — | `sizes` attribute on the snippet sources and img, e.g. `"(min-width: 1024px) 620px, 100vw"` |
+| `--eager` | convert | off | hero/LCP image: `fetchpriority="high"` instead of `loading="lazy"` in the snippet |
 | `--model <model>` | convert, batch | `claude-sonnet-5` | |
 | `--name <slug>` | convert | — | skips the LLM for naming; still validated |
 | `--alt <text>` | convert | — | overrides alt text |
@@ -290,3 +292,7 @@ npm test
 Tests run with `node --test`, generate their own PNG fixture with `sharp`
 at test time (no binary fixtures committed), and pass with
 `ANTHROPIC_API_KEY` unset.
+
+## Claude skill
+
+`skill/web-images/` is the Claude skill that drives the whole Higgsfield → webimg → site pipeline (plan slots, generate, convert, place per stack, verify, ship). Install it by copying the folder to `~/.claude/skills/` or uploading a zip of it on claude.ai. On Windows Git Bash, prefix commands that pass `/assets/img`-style paths with `MSYS_NO_PATHCONV=1`.
