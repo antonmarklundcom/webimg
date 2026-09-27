@@ -44,6 +44,8 @@ async function runConvert(input, opts) {
     qualityWebp: opts.qualityWebp,
     outDir: opts.out,
     publicPath: opts.publicPath,
+    sizes: opts.sizes,
+    eager: opts.eager,
     model: opts.model,
     position: opts.position,
     dryRun: opts.dryRun,
@@ -199,6 +201,7 @@ async function runBatch(dir, opts) {
         widths: widthsDefault,
         altText: naming.alt_text,
         entries,
+        sizes: opts.sizes,
       });
 
       manifestEntries.push({
@@ -247,6 +250,8 @@ async function main() {
     .argument("<input>", "path to a .png, .jpg, .jpeg, or .webp source image, or an http(s) URL to one")
     .option("--prompt <text>", "short description used for LLM naming/alt text (optional when --name and --alt are given)")
     .option("--public-path <path>", "web path used in the HTML snippet, e.g. /assets/img (default: --out relative to cwd)")
+    .option("--sizes <value>", "sizes attribute for the snippet, e.g. \"(min-width: 1024px) 620px, 100vw\"")
+    .option("--eager", "hero/LCP image: fetchpriority=high instead of lazy loading in the snippet", false)
     .option("--ar <ratio>", "target aspect ratio, e.g. 21:9 (default: source aspect ratio)")
     .option("--widths <list>", "comma-separated output widths", "640,1280,1920")
     .option("--quality-avif <n>", "AVIF quality (0-100)", (v) => Number(v), 44)
@@ -272,6 +277,7 @@ async function main() {
     .option("--quality-webp <n>", "WebP quality (0-100)", (v) => Number(v), 60)
     .option("--out <dir>", "output directory", "./assets/img")
     .option("--public-path <path>", "web path used in the HTML snippets, e.g. /assets/img (default: --out relative to cwd)")
+    .option("--sizes <value>", "sizes attribute for every snippet, e.g. \"(min-width: 1024px) 380px, 100vw\"")
     .option("--model <model>", "Claude model for naming/alt text", "claude-sonnet-5")
     .option("--position <pos>", "default crop position: attention|top|centre|entropy (rows may override)", "attention")
     .option("--dry-run", "print planned output without writing files", false)

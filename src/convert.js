@@ -86,7 +86,7 @@ function escapeAttr(str) {
   return String(str).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
-export function buildHtmlSnippet({ outPrefix, filenameBase, widths, altText, entries }) {
+export function buildHtmlSnippet({ outPrefix, filenameBase, widths, altText, entries, sizes, eager = false }) {
   const sortedWidths = [...widths].sort((a, b) => a - b);
   // Describe each file by its real pixel width (a capped variant is narrower than its label).
   const realW = (w, fmt) => (entries.find((e) => e.file === `${filenameBase}-${w}.${fmt}`) || {}).width || w;
@@ -98,17 +98,22 @@ export function buildHtmlSnippet({ outPrefix, filenameBase, widths, altText, ent
     .join(", ");
 
   const midWidth = pickMidWidth(sortedWidths);
-  const midEntry = entries.find((e) => e.format === "webp" && e.width === midWidth) ||
+  // Match by file name: a capped variant's real width differs from its label.
+  const midEntry = entries.find((e) => e.file === `${filenameBase}-${midWidth}.webp`) ||
     entries.find((e) => e.format === "webp");
   const imgSrc = `${outPrefix}/${filenameBase}-${midWidth}.webp`;
   const imgWidth = midEntry ? midEntry.width : midWidth;
   const imgHeight = midEntry ? midEntry.height : Math.round(midWidth);
 
+  const sizesAttr = sizes ? ` sizes="${escapeAttr(sizes)}"` : "";
+  // eager = the page's LCP image (hero): load it first instead of lazily.
+  const loadAttrs = eager ? 'fetchpriority="high" decoding="async"' : 'loading="lazy" decoding="async"';
+
   return [
     "<picture>",
-    `  <source type="image/avif" srcset="${avifSrcset}">`,
-    `  <source type="image/webp" srcset="${webpSrcset}">`,
-    `  <img src="${imgSrc}" alt="${escapeAttr(altText)}" width="${imgWidth}" height="${imgHeight}" loading="lazy" decoding="async">`,
+    `  <source type="image/avif" srcset="${avifSrcset}"${sizesAttr}>`,
+    `  <source type="image/webp" srcset="${webpSrcset}"${sizesAttr}>`,
+    `  <img src="${imgSrc}" alt="${escapeAttr(altText)}" width="${imgWidth}" height="${imgHeight}"${sizesAttr} ${loadAttrs}>`,
     "</picture>",
   ].join("\n");
 }
@@ -166,6 +171,8 @@ export async function convertImage({
   qualityWebp = 60,
   outDir = "./assets/img",
   publicPath,
+  sizes,
+  eager = false,
   model = "claude-sonnet-5",
   position = "attention",
   dryRun = false,
@@ -224,6 +231,8 @@ export async function convertImage({
       widths: widthList,
       altText: naming.alt_text,
       entries,
+      sizes,
+      eager,
     });
 
     let source;

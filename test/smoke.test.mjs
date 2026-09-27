@@ -328,3 +328,21 @@ test("convert: without --prompt and without --name/--alt exits 1", async () => {
     (err) => err.code === 1
   );
 });
+
+test("convert: --sizes and --eager shape the <picture> snippet", async () => {
+  const outDir = path.join(tmpDir, "out-sizes");
+  await fs.rm(outDir, { recursive: true, force: true });
+  const env = { ...process.env };
+  delete env.ANTHROPIC_API_KEY;
+  const sizes = "(min-width: 1024px) 620px, 100vw";
+
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [cliPath, "convert", samplePng, "--name", "prueba-hero", "--alt", "Prueba", "--widths", "640", "--out", outDir, "--public-path", "/img", "--sizes", sizes, "--eager"],
+    { cwd: rootDir, env }
+  );
+
+  assert.equal(stdout.split(`sizes="${sizes}"`).length - 1, 3, "sizes on both sources and the img");
+  assert.ok(stdout.includes('fetchpriority="high"'), "eager snippet asks for high priority");
+  assert.ok(!stdout.includes('loading="lazy"'), "eager snippet is not lazy");
+});
