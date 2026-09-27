@@ -301,3 +301,30 @@ test("convert: a URL returning 404 exits 1", async () => {
 
   assert.equal(code, 1);
 });
+
+test("convert: --name + --alt work without --prompt, never upscale, --public-path sets snippet paths", async () => {
+  const outDir = path.join(tmpDir, "out-noprompt");
+  await fs.rm(outDir, { recursive: true, force: true });
+  const env = { ...process.env };
+  delete env.ANTHROPIC_API_KEY;
+  const srcWidth = (await sharp(samplePng).metadata()).width;
+  const big = srcWidth + 500;
+
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [cliPath, "convert", samplePng, "--name", "prueba-sin-prompt", "--alt", "Prueba", "--widths", `640,${big}`, "--out", outDir, "--public-path", "/assets/img"],
+    { cwd: rootDir, env }
+  );
+
+  const capped = await sharp(path.join(outDir, `prueba-sin-prompt-${big}.webp`)).metadata();
+  assert.equal(capped.width, srcWidth, "variant wider than the source must be written at source width");
+  assert.ok(stdout.includes(`/assets/img/prueba-sin-prompt-${big}.webp ${srcWidth}w`), "srcset must use the real width and the public path");
+  assert.ok(!stdout.includes(outDir.split(path.sep).join("/")), "snippet must not contain the disk path");
+});
+
+test("convert: without --prompt and without --name/--alt exits 1", async () => {
+  await assert.rejects(
+    execFileAsync(process.execPath, [cliPath, "convert", samplePng, "--name", "solo-nombre", "--out", path.join(tmpDir, "out-bad")], { cwd: rootDir }),
+    (err) => err.code === 1
+  );
+});
