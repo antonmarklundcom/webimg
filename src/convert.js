@@ -1,13 +1,20 @@
 // src/convert.js — shared single-image conversion core used by the CLI and the local server.
 
 import path from "node:path";
+import fssync from "node:fs";
 
-import { generateNaming, validateSlug } from "./naming.js";
+import { generateNaming, validateSlug, DEFAULT_MODEL } from "./naming.js";
 import { processImage } from "./process.js";
-import { writeManifest } from "./manifest.js";
+import { writeManifest, findManifestEntry } from "./manifest.js";
 import { fetchToTemp } from "./fetch.js";
+import { parseMaxKb } from "./budget.js";
+import { hashFile, hashOptions } from "./hash.js";
 
-export const VALID_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
+export const VALID_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".webp",
+  ".avif", ".heic", ".heif", ".tif", ".tiff", ".gif",
+]);
+export const VALID_EXTENSIONS_LABEL = ".png, .jpg, .jpeg, .webp, .avif, .heic, .tif/.tiff or .gif";
 const URL_RE = /^https?:\/\//i;
 
 export function isUrl(str) {
@@ -118,13 +125,24 @@ export function buildHtmlSnippet({ outPrefix, filenameBase, widths, altText, ent
   ].join("\n");
 }
 
+/** The og:image meta tag for a set converted with --og (null when there is no og file). */
+export function buildOgSnippet({ outPrefix, filenameBase, entries }) {
+  const ogEntry = entries.find((e) => e.file === `${filenameBase}-og.jpg`);
+  if (!ogEntry) return null;
+  return `<meta property="og:image" content="${outPrefix}/${filenameBase}-og.jpg">\n<meta property="og:image:width" content="${ogEntry.width}">\n<meta property="og:image:height" content="${ogEntry.height}">`;
+}
+
 export function buildFilesForManifest(entries) {
   return entries.map((e) => ({
     file: e.file,
     format: e.format,
     width: e.width,
     height: e.height,
+    bytes: e.bytes,
     kb: Math.round((e.bytes / 1024) * 10) / 10,
+    quality: e.quality,
+    ...(e.budget_kb ? { budget_kb: e.budget_kb } : {}),
+    ...(e.over_budget ? { over_budget: true } : {}),
   }));
 }
 
@@ -154,11 +172,15 @@ export async function resolveNaming({ nameOpt, altOpt, prompt, apiKey, model, in
 }
 
 /**
- * Converts one image (local path or URL) into an AVIF + WebP set and returns
+ * Converts one image (local path or URL) into an AVIF + WebP set (+ og:image) and returns
  * the manifest entry. Writes/merges <outDir>/manifest.json unless dryRun or
  * writeManifestFile === false.
  *
- * @returns {Promise<{ entry: object, entries: Array<object>, naming: object }>}
+ * Idempotent: when the manifest already has an entry for the same filename_base with the
+ * same source hash and the same output options, and every listed file exists, nothing is
+ * re-encoded (`skipped: true`). Pass `force: true` to re-encode anyway.
+ *
+ * @returns {Promise<{ entry: object, entries: Array<object>, naming: object, skipped: boolean }>}
  */
 export async function convertImage({
   input,
@@ -173,11 +195,18 @@ export async function convertImage({
   publicPath,
   sizes,
   eager = false,
-  model = "claude-sonnet-5",
+  model = DEFAULT_MODEL,
   position = "attention",
   dryRun = false,
   writeManifestFile = true,
   sourceLabel,
+  og = false,
+  ogBackground = "#ffffff",
+  maxKb,
+  copyright,
+  creator,
+  force = false,
+  log = console.log,
 }) {
   const inputIsUrl = isUrl(input);
   let resolvedInput = input;
@@ -192,11 +221,12 @@ export async function convertImage({
 
     const ext = path.extname(resolvedInput).toLowerCase();
     if (!VALID_EXTENSIONS.has(ext)) {
-      throw new Error(`unsupported input type "${ext}" — expected .png, .jpg, .jpeg, or .webp`);
+      throw new Error(`unsupported input type "${ext}" — expected ${VALID_EXTENSIONS_LABEL}`);
     }
 
     const widthList = Array.isArray(widths) ? widths : parseWidths(widths);
     const arPair = Array.isArray(ar) ? ar : parseAr(ar);
+    const budget = typeof maxKb === "object" && maxKb !== null && "forWidth" in maxKb ? maxKb : parseMaxKb(maxKb);
     const apiKey = process.env.ANTHROPIC_API_KEY;
 
     const inputBasename = inputIsUrl
@@ -212,6 +242,73 @@ export async function convertImage({
       inputBasename,
     });
 
+    const sourceHash = await hashFile(resolvedInput);
+    const optionsHash = hashOptions({
+      widths: widthList,
+      ar: arPair,
+      qualityAvif,
+      qualityWebp,
+      position,
+      og: Boolean(og),
+      ogBackground: og ? ogBackground : null,
+      budget: budget ? budget.label : "off",
+      copyright: copyright || null,
+      creator: creator || null,
+    });
+
+    const outPrefix = normalizeOutPrefix(outDir, publicPath);
+
+    let source;
+    if (sourceLabel) source = sourceLabel;
+    else if (inputIsUrl) source = input;
+    else source = path.relative(process.cwd(), input).replace(/\\/g, "/");
+
+    // Idempotent skip: same source bytes, same output options, all files present.
+    if (!force && !dryRun) {
+      const previous = await findManifestEntry(outDir, naming.filename_base);
+      if (
+        previous &&
+        previous.source_hash === sourceHash &&
+        previous.options_hash === optionsHash &&
+        Array.isArray(previous.files) &&
+        previous.files.length > 0 &&
+        previous.files.every((f) => fssync.existsSync(path.join(outDir, f.file)))
+      ) {
+        const entries = previous.files.map((f) => ({
+          file: f.file,
+          path: path.join(outDir, f.file),
+          format: f.format,
+          width: f.width,
+          height: f.height,
+          bytes: f.bytes ?? Math.round((f.kb || 0) * 1024),
+          quality: f.quality,
+          budget_kb: f.budget_kb ?? null,
+          over_budget: Boolean(f.over_budget),
+        }));
+        const htmlSnippet = buildHtmlSnippet({
+          outPrefix,
+          filenameBase: naming.filename_base,
+          widths: widthList,
+          altText: naming.alt_text,
+          entries,
+          sizes,
+          eager,
+        });
+        const entry = {
+          ...previous,
+          source,
+          prompt: prompt || previous.prompt || "",
+          alt_text: naming.alt_text,
+          naming_source: naming.source,
+          html_snippet: htmlSnippet,
+          og_snippet: buildOgSnippet({ outPrefix, filenameBase: naming.filename_base, entries }),
+        };
+        log(`↷ ${naming.filename_base}: unchanged source and options, ${entries.length} files already present — skipped (use --force to re-encode)`);
+        if (writeManifestFile) await writeManifest(outDir, [entry]);
+        return { entry, entries, naming, skipped: true };
+      }
+    }
+
     const entries = await processImage({
       input: resolvedInput,
       filenameBase: naming.filename_base,
@@ -222,9 +319,14 @@ export async function convertImage({
       outDir,
       position,
       dryRun,
+      og,
+      ogBackground,
+      budget,
+      copyright,
+      creator,
+      log,
     });
 
-    const outPrefix = normalizeOutPrefix(outDir, publicPath);
     const htmlSnippet = buildHtmlSnippet({
       outPrefix,
       filenameBase: naming.filename_base,
@@ -235,27 +337,27 @@ export async function convertImage({
       eager,
     });
 
-    let source;
-    if (sourceLabel) source = sourceLabel;
-    else if (inputIsUrl) source = input;
-    else source = path.relative(process.cwd(), input).replace(/\\/g, "/");
-
     const entry = {
       filename_base: naming.filename_base,
       source,
+      source_hash: sourceHash,
+      options_hash: optionsHash,
       prompt: prompt || "",
       alt_text: naming.alt_text,
       naming_source: naming.source,
       aspect_ratio: formatAr(arPair),
+      converted_at: new Date().toISOString(),
       files: buildFilesForManifest(entries),
       html_snippet: htmlSnippet,
+      og_snippet: buildOgSnippet({ outPrefix, filenameBase: naming.filename_base, entries }),
     };
+    if (!entry.og_snippet) delete entry.og_snippet;
 
     if (!dryRun && writeManifestFile) {
       await writeManifest(outDir, [entry]);
     }
 
-    return { entry, entries, naming };
+    return { entry, entries, naming, skipped: false };
   } finally {
     if (cleanup) await cleanup();
   }

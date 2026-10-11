@@ -5,12 +5,18 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
-const EXT_FROM_PATHNAME = new Set([".png", ".jpg", ".jpeg", ".webp"]);
+const EXT_FROM_PATHNAME = new Set([".png", ".jpg", ".jpeg", ".webp", ".avif", ".heic", ".heif", ".tif", ".tiff", ".gif"]);
 
 const EXT_FROM_CONTENT_TYPE = {
   "image/png": ".png",
   "image/jpeg": ".jpg",
+  "image/jpg": ".jpg",
   "image/webp": ".webp",
+  "image/avif": ".avif",
+  "image/heic": ".heic",
+  "image/heif": ".heif",
+  "image/tiff": ".tiff",
+  "image/gif": ".gif",
 };
 
 function extFromUrl(url) {

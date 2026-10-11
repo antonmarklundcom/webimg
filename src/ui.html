@@ -47,10 +47,10 @@
 <body>
 <main>
   <h1>webimg</h1>
-  <p class="sub">Drop PNG / JPG / WebP images, describe each one, convert. Output lands in <code id="outdir">…</code> and every file can be downloaded here one by one or as a zip. <span id="llm"></span></p>
+  <p class="sub">Drop PNG / JPG / WebP / AVIF / TIFF images, describe each one, convert. Output lands in <code id="outdir">…</code> and every file can be downloaded here one by one or as a zip. <span id="llm"></span></p>
 
   <div id="drop"><strong>Drop images here</strong> or click to choose<br><span class="hint">Naming: give each image a short description (used for the slug + alt text) or type the slug yourself.</span></div>
-  <input type="file" id="picker" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" multiple hidden>
+  <input type="file" id="picker" accept=".png,.jpg,.jpeg,.webp,.avif,.tif,.tiff,.heic,.gif,image/png,image/jpeg,image/webp,image/avif,image/tiff,image/heic,image/gif" multiple hidden>
 
   <div class="card" id="queue-card" hidden>
     <div class="row">
@@ -118,7 +118,7 @@
 
   function addFiles(list) {
     for (const f of list) {
-      if (!/\.(png|jpe?g|webp)$/i.test(f.name)) continue;
+      if (!/\.(png|jpe?g|webp|avif|tiff?|heic|gif)$/i.test(f.name)) continue;
       const item = { file: f, prompt: '', name: '', alt: '', ar: '', status: '', url: URL.createObjectURL(f) };
       queue.push(item);
     }

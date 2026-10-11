@@ -1,19 +1,21 @@
 name: test
+# Runs only on pull requests (not on every push to main) to keep Actions minutes low.
+# One Node version, one job; cancel superseded runs on the same PR.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node: [20, 22]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 20
           cache: npm
       - run: npm ci
       - run: npm test

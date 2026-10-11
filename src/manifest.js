@@ -1,7 +1,30 @@
-// src/manifest.js — writes / merges manifest.json describing generated image sets.
+// src/manifest.js — reads / writes / merges manifest.json describing generated image sets.
 
 import fs from "node:fs/promises";
 import path from "node:path";
+
+/**
+ * Reads <outDir>/manifest.json. Returns an empty manifest when missing or invalid.
+ */
+export async function readManifest(outDir) {
+  const manifestPath = path.join(outDir, "manifest.json");
+  try {
+    const raw = await fs.readFile(manifestPath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.images)) parsed.images = [];
+    return parsed;
+  } catch {
+    return { generated_at: null, images: [] };
+  }
+}
+
+/**
+ * Returns the existing manifest entry for `filenameBase`, or null.
+ */
+export async function findManifestEntry(outDir, filenameBase) {
+  const manifest = await readManifest(outDir);
+  return manifest.images.find((img) => img.filename_base === filenameBase) || null;
+}
 
 /**
  * Writes <outDir>/manifest.json, merging with any existing manifest.
@@ -12,16 +35,7 @@ import path from "node:path";
  */
 export async function writeManifest(outDir, entries) {
   const manifestPath = path.join(outDir, "manifest.json");
-
-  let existing = { generated_at: null, images: [] };
-  try {
-    const raw = await fs.readFile(manifestPath, "utf8");
-    existing = JSON.parse(raw);
-    if (!Array.isArray(existing.images)) existing.images = [];
-  } catch {
-    // no existing manifest, or unreadable/invalid — start fresh
-    existing = { generated_at: null, images: [] };
-  }
+  const existing = await readManifest(outDir);
 
   const newBases = new Set(entries.map((e) => e.filename_base));
   const kept = existing.images.filter((img) => !newBases.has(img.filename_base));

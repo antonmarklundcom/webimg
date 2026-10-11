@@ -35,7 +35,12 @@ function img(string $key, string $class = '', string $sizes = '100vw', bool $eag
 }
 ```
 
-Check: `php -l` on touched files, `php -S 127.0.0.1:8093 index.php`, curl the pages.
+`og:image` on these sites is `/assets/img/<file>-og.jpg` (1200×630), written by webimg
+`--og`; the head partial usually reads the same image map, so set the page's image key and
+check the rendered `<meta property="og:image">` points at an existing file.
+
+Check: `php -l` on touched files, `php -S 127.0.0.1:8093 index.php`, curl the pages, then
+`npx -y github:antonmarklundcom/webimg audit .` from the repo root.
 
 ## Static HTML, hand-written
 

@@ -138,12 +138,25 @@ Run from the repo root:
 
 ```
 npx -y github:antonmarklundcom/webimg convert "<result URL>" \
-  --name <slug> --alt "<alt>" --widths 640,1280 --out <image dir> --public-path <web path> \
+  --name <slug> --alt "<alt>" --widths 640,1280 --og --out <image dir> --public-path <web path> \
   --sizes "<layout width, e.g. (min-width: 1024px) 620px, 100vw>" [--eager for the hero/LCP image]
 ```
 
 The printed `<picture>` snippet is paste-ready for hand-written HTML: `sizes` on every
-source, and `--eager` swaps lazy loading for `fetchpriority="high"`.
+source, and `--eager` swaps lazy loading for `fetchpriority="high"`. webimg 0.2
+(2026-10-11) also prints the `og:image` meta tags when `--og` is on.
+
+- `--og` always: writes `<slug>-og.jpg` (1200×630, mozjpeg, attention crop) next to the
+  set, which is what the PHP sites' `og:image` helper expects. Transparent logos are
+  flattened onto white for the JPG only.
+- Budgets are on by default (`--max-kb`: 640 ≤ 60 KB, 1280 ≤ 120 KB, 1920 ≤ 200 KB,
+  og ≤ 200 KB). webimg lowers quality until each file fits and prints `⚠ … OVER BUDGET`
+  for anything that cannot fit at the quality floor: report those, don't hide them. Never
+  pass `--max-kb off` for a site.
+- Re-running the same command is free: unchanged source + options → `↷ skipped`, so you
+  can rerun a whole batch after fixing one slot. `--force` re-encodes.
+- EXIF/GPS are stripped and colours converted to sRGB automatically. Add
+  `--copyright "© <year> <site>"` when the site states image credits.
 
 - `--widths`: match what the site's templates reference. Most of Anton's PHP/static sites
   use `640,1280`; use `640,1280,1920` for `4k` images shown full-width. webimg never
@@ -158,8 +171,14 @@ source, and `--eager` swaps lazy loading for `fetchpriority="high"`.
   `references/stacks.md`); the repo's `docs/imagery-manifest.json` is the record.
 - Batch alternative: `webimg batch . --manifest jobs.csv --out <dir>` with columns
   `file,name,alt,ar,position` (file = URL).
-- Budget: AVIF at 1280 ≤ ~120 KB, nothing > 200 KB. If a file is over, lower
-  `--quality-avif`/`--quality-webp` for that image only and note it.
+- After converting a site's images run `npx -y github:antonmarklundcom/webimg audit <image dir>`
+  (and `audit <repo root>` for the templates): it lists oversized files, missing AVIF/WebP
+  pairs, missing `-og.jpg`, `<img>` without alt or width/height and non-SEO names. Fix
+  everything it lists before shipping.
+- Hostinger git-deployed sites: the images are committed to the repo, so "upload" is just
+  `--out` inside the repo (or `webimg upload <dir> --to dir --dest <repo>/assets/img`).
+  R2-backed sites: `webimg upload <dir> --to r2 --bucket <b> --prefix <site>/img` with the
+  `R2_*` env vars set by Anton; run `--dry-run` first and never echo the variables.
 
 ## 4. Place (per stack)
 
