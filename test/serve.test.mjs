@@ -149,7 +149,7 @@ test("GET /files serves converted files and refuses traversal", async () => {
 
 test("POST /api/convert rejects unsupported types and missing prompt", async () => {
   const body = await fs.readFile(samplePng);
-  const gif = await fetch(`${srv.url}api/convert?filename=x.gif&prompt=x`, { method: "POST", body });
+  const gif = await fetch(`${srv.url}api/convert?filename=x.bmp&prompt=x`, { method: "POST", body });
   assert.equal(gif.status, 400);
   const noPrompt = await fetch(`${srv.url}api/convert?filename=x.png`, { method: "POST", body });
   assert.equal(noPrompt.status, 400);

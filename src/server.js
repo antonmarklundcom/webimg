@@ -10,7 +10,8 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
-import { convertImage, VALID_EXTENSIONS, parseWidths, parseAr } from "./convert.js";
+import { convertImage, VALID_EXTENSIONS, VALID_EXTENSIONS_LABEL, parseWidths, parseAr } from "./convert.js";
+import { DEFAULT_MODEL } from "./naming.js";
 import { zipDirectory, createZip } from "./zip.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -118,7 +119,7 @@ export async function startServer({
   widths = "640,1280,1920",
   qualityAvif = 44,
   qualityWebp = 60,
-  model = "claude-sonnet-5",
+  model = DEFAULT_MODEL,
   position = "attention",
   log = console.log,
 } = {}) {
@@ -166,7 +167,7 @@ export async function startServer({
       const originalName = safeBasename(decodeURIComponent(q.get("filename") || "upload.png"));
       const ext = path.extname(originalName || "").toLowerCase();
       if (!originalName || !VALID_EXTENSIONS.has(ext)) {
-        sendError(res, 400, `unsupported input type "${ext}" — expected .png, .jpg, .jpeg, or .webp`);
+        sendError(res, 400, `unsupported input type "${ext}" — expected ${VALID_EXTENSIONS_LABEL}`);
         return;
       }
       const prompt = (q.get("prompt") || "").trim();

@@ -3,6 +3,10 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 
+// Default Claude model for the optional API naming path (the usual path is --name/--alt
+// chosen by the Claude session, with no API key). Current id per the claude-api skill, 2026-10.
+export const DEFAULT_MODEL = "claude-opus-5-5";
+
 const SYSTEM_PROMPT = `You name image files for Spanish-language local-business and real-estate websites in Paraguay. Given a short description of an image, return JSON with:
 - filename_base: an SEO slug in lowercase kebab-case, ASCII only (strip accents: ñ→n, á→a), 3–8 words, keyword-rich (service or subject + place when a place is given), no stopwords-only slugs, no numbers unless part of a name, no file extension, no width suffix. Example: "tasacion-de-inmuebles-luque", "calle-residencial-san-lorenzo".
 - alt_text: a natural descriptive Spanish sentence (8–20 words) describing what is visible in the image for a screen reader, including the place if given. No "imagen de"/"foto de" prefix. Proper Spanish accents are fine here.`;

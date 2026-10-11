@@ -201,7 +201,7 @@ test("batch: skips missing files, converts the rest, exits 0", async () => {
   });
 
   assert.equal(code, 0);
-  assert.match(stdout, /Done: 1 converted, 1 skipped, 0 failed/);
+  assert.match(stdout, /Done: 1 converted, 0 unchanged, 1 skipped, 0 failed/);
 
   const expectedBase = "san-lorenzo-zone-residential-street";
   assert.ok(fssync.existsSync(path.join(outDir2, `${expectedBase}-640.avif`)));
