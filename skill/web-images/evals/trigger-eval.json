@@ -1,0 +1,82 @@
+[
+  {
+    "query": "Generate image for the home page of dentista.com.py",
+    "should_trigger": true
+  },
+  {
+    "query": "kör bilder för takbyte-sajten",
+    "should_trigger": true
+  },
+  {
+    "query": "images for salud.cf, every service page needs one",
+    "should_trigger": true
+  },
+  {
+    "query": "optimize images in assets/img, some are 400 KB",
+    "should_trigger": true
+  },
+  {
+    "query": "generate images for the new abogado site, one per page",
+    "should_trigger": true
+  },
+  {
+    "query": "the site has no photos, fix it",
+    "should_trigger": true
+  },
+  {
+    "query": "bilder till redovisningssajten, planera slots först",
+    "should_trigger": true
+  },
+  {
+    "query": "here is a Higgsfield result URL, put it on the tasación page",
+    "should_trigger": true
+  },
+  {
+    "query": "convert these PNGs from the old WordPress site into the new repo",
+    "should_trigger": true
+  },
+  {
+    "query": "imágenes para el sitio de la clínica, con alt text",
+    "should_trigger": true
+  },
+  {
+    "query": "make a TikTok video of the clinic opening",
+    "should_trigger": false
+  },
+  {
+    "query": "illustrate chapter 3 of the cuentos book",
+    "should_trigger": false
+  },
+  {
+    "query": "write alt text guidelines for our content team as a blog post",
+    "should_trigger": false
+  },
+  {
+    "query": "add an upload field to the admin so users can attach photos",
+    "should_trigger": false
+  },
+  {
+    "query": "the hero image CSS is broken on mobile, fix the layout",
+    "should_trigger": false
+  },
+  {
+    "query": "how many Higgsfield credits do I have left?",
+    "should_trigger": false
+  },
+  {
+    "query": "design a logo for the dental clinic",
+    "should_trigger": false
+  },
+  {
+    "query": "compress the PDF brochure before emailing it",
+    "should_trigger": false
+  },
+  {
+    "query": "set up next/image with the Vercel loader",
+    "should_trigger": false
+  },
+  {
+    "query": "resize my profile photo for LinkedIn",
+    "should_trigger": false
+  }
+]
